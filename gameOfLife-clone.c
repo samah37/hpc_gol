@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 #include <string.h>
 #include <malloc.h>
 #include <pthread.h>
+#include <sys/time.h>
 
 #define MAX_ALLOC_BYTES 1024*128
 
@@ -11,8 +11,8 @@ typedef struct {
     unsigned int width;
     unsigned int height;
 
-    unsigned char *grid;
-    unsigned char *newGrid;
+    unsigned char *leftGrid;
+    unsigned char *rightGrid;
 } Universe;
 
 // function to get the right index in the table for each element
@@ -29,16 +29,17 @@ Universe* createUniverse(unsigned int width, unsigned int height) {
     }
 
 
-    Universe* uni = (Universe*) malloc(sizeof(Universe));
+    Universe* uni = (Universe*) calloc(1, sizeof(Universe));
 
     uni->width = width;
     uni->height = height;
 
     // now we create the list of all elements as a long array
-    uni->grid = malloc(sizeof(unsigned char)*width*height);
-    memset(uni->grid, 0, sizeof(unsigned char) * width * height);
+    uni->leftGrid = calloc(width*height, sizeof(unsigned char));
+    memset(uni->leftGrid, 0, sizeof(unsigned char) * width * height);
 
-    uni->newGrid = NULL;
+    uni->rightGrid = calloc(width*height, sizeof(unsigned char));
+    memset(uni->rightGrid, 0, sizeof(unsigned char) * width * height);
 
     return uni;
 }
@@ -51,7 +52,7 @@ void randomizeUniverse(Universe* uni) {
     srand(time(NULL));
     for (i=0; i < uni->height; i++) {
         for (j = 0; j < uni->width; j++) {
-            uni->grid[getIndex(uni, i, j)] = rand() % 2;
+            uni->leftGrid[getIndex(uni, i, j)] = rand() % 2;
         }
     }
 }
@@ -60,22 +61,19 @@ void afficherUniverse(Universe* universe) {
     int i ,j;
     for (i = 0; i < universe->height; i++){
         for (j = 0; j < universe->width; j++)
-            printf("%d ", universe->grid[getIndex(universe, i, j)]);
+            printf("%d ", universe->leftGrid[getIndex(universe, i, j)]);
         printf("\n");
     }
 }
 
 void freeUniverse(Universe* uni) {
-    free(uni->grid);
-
-    if (uni->newGrid != NULL) {
-        free(uni->newGrid);
-    }
+    free(uni->leftGrid);
+    free(uni->rightGrid);
 
     free(uni);
 }
 
-unsigned char nbNeighborsAlive(Universe* uni, unsigned int x, unsigned int y) {
+unsigned char nbNeighborsAlive(Universe* uni, unsigned int x, unsigned int y, int iteration) {
 
     unsigned char count = 0;
     int rows[] = {uni->height - 1, 0, 1};
@@ -90,16 +88,25 @@ unsigned char nbNeighborsAlive(Universe* uni, unsigned int x, unsigned int y) {
             char row = (x + rows[i]) % uni->height;
             char col = (y + cols[j]) % uni->width;
 
-            count += uni->grid[getIndex(uni, row, col)];
+            if (iteration % 2 == 0) {
+                count += uni->leftGrid[getIndex(uni, row, col)];
+            } else {
+                count += uni->rightGrid[getIndex(uni, row, col)];
+            }
         }
     }
 
     return count;
 }
 
-unsigned char updateValue(Universe* universe, unsigned int x, unsigned int y) {
-    unsigned char currentVal = universe->grid[getIndex(universe, x, y)],
-                  neighbors = nbNeighborsAlive(universe, x, y);
+unsigned char updateValue(Universe* universe, unsigned int x, unsigned int y, int iteration) {
+    unsigned char currentVal;
+    if (iteration % 2 == 0) {
+        currentVal = universe->leftGrid[getIndex(universe, x, y)];
+    } else {
+        currentVal = universe->rightGrid[getIndex(universe, x, y)];
+    }
+    unsigned char neighbors = nbNeighborsAlive(universe, x, y, iteration);
 
     if (currentVal == 1 && (neighbors == 2 || neighbors == 3)) return 1; // survival rule 1
 
@@ -109,31 +116,21 @@ unsigned char updateValue(Universe* universe, unsigned int x, unsigned int y) {
 
 }
 
-void abstractIteration(Universe* universe, void (*iteration)(Universe *)) {
-    // create new grid for use in the iteration
-    universe->newGrid = (unsigned char*)malloc(sizeof(unsigned char) * universe->width * universe->height);
-
-    if (universe->newGrid == NULL) {
-        printf("\ncouldn't create a grid with size: %d\n", sizeof(unsigned char) * universe->width * universe->height);
-    }
-
-    iteration(universe);    
-
-    // exchange grids
-    free(universe->grid);
-    universe->grid = universe->newGrid;
-    universe->newGrid = NULL;
-}
-
 int nb_threads = 1;
-void iterationSequentiel(Universe *universe) {
-    int i, j;
+void iterationSequentiel(Universe *universe, unsigned int nb_iter) {
+    int k, i, j;
     
-    for (i = 0; i < universe->height; i++) {
-        for (j = 0; j < universe->width; j++) {
-            int index = getIndex(universe, i, j);
-            
-            universe->newGrid[index] = updateValue(universe, i, j);
+    for (k = 0; k < nb_iter; k++) {
+        for (i = 0; i < universe->height; i++) {
+            for (j = 0; j < universe->width; j++) {
+                int index = getIndex(universe, i, j);
+                
+                if (k % 2 == 0) {
+                    universe->rightGrid[index] = updateValue(universe, i, j, k);
+                } else {
+                    universe->leftGrid[index] = updateValue(universe, i, j, k);
+                }
+            }
         }
     }
 }
@@ -141,6 +138,8 @@ void iterationSequentiel(Universe *universe) {
 typedef struct {
     Universe* uni;
     int thread_num;
+    unsigned int nb_iter;
+    pthread_barrier_t* barr;
 } pthread_param;
 
 void *subIterationPthread(void* data) {
@@ -152,60 +151,80 @@ void *subIterationPthread(void* data) {
     // verifie start and end heights
     //printf("thread %d:\n\tstart: %d,\n\tend: %d,\n\n", param->thread_num, start_height, end_height);
 
-    int i, j;
-    for (i = start_height; i < end_height; i++) {
-        for (j = 0; j < param->uni->width; j++) {
-            int index = getIndex(param->uni, i, j);
+    int i, j, k;
+    for (k = 0; k < param->nb_iter; k++) {
+        for (i = start_height; i < end_height; i++) {
+            for (j = 0; j < param->uni->width; j++) {
+                int index = getIndex(param->uni, i, j);
 
-            param->uni->newGrid[index] = updateValue(param->uni, i, j);
+                if (k % 2 == 0)
+                    param->uni->rightGrid[index] = updateValue(param->uni, i, j, k);
+                else
+                    param->uni->leftGrid[index] = updateValue(param->uni, i, j, k);
+            }
         }
+
+        int bn = pthread_barrier_wait(param->barr);
+        if(bn != 0 && bn != PTHREAD_BARRIER_SERIAL_THREAD){
+            printf("Could not wait on barrier\n");
+            exit(-1);
+        }
+        
     }
     pthread_exit(NULL);
 }
 
-void iterationPthread(Universe *universe) {
+void iterationPthread(Universe *universe, unsigned int nb_iter) {
     // TODO: try using the same threads for all iterations
     pthread_t threads[nb_threads];
-    pthread_param* params = (pthread_param*) malloc(nb_threads * sizeof(pthread_param));
+    pthread_param* params = (pthread_param*) calloc(nb_threads, sizeof(pthread_param));
+
+    pthread_barrier_t barrier;
+
+    if(pthread_barrier_init(&barrier, NULL, nb_threads)){
+        printf("Could not create a barrier\n");
+        exit(1);
+    }
 
     int i;
     for (i = 0; i < nb_threads; i++) {
         params[i].thread_num = i;
         params[i].uni = universe;
+        params[i].nb_iter = nb_iter;
+        params[i].barr = &barrier;
         pthread_create(threads + i, NULL, subIterationPthread, &params[i]);
     }
 
     for (i = 0; i < nb_threads; i++) {
         pthread_join(threads[i], NULL);
     }
+    pthread_barrier_destroy(&barrier);
     free(params);
 }
 
-void runIterations(Universe* uni, unsigned int nb_iter, void (*iteration)(Universe *)) {
+void testPerformance(Universe* uni, void (*iteration)(Universe*, unsigned int)) {
 
-    clock_t start, end;
-    double time_elapsed;
+    struct timeval t_start, t_end;
     int i;
 
-    printf("pour %d iterations: ", nb_iter);
-    start = clock();
-
-    for (i = 0; i < nb_iter; i++)
-        abstractIteration(uni, iteration);
     
-    end = clock();
-    time_elapsed = ((double) (end - start)) / CLOCKS_PER_SEC;
+
+    unsigned int nb_iterations[] = {100, 500, 1000};
+    int taille = 3;
+
+    for (i = 0; i < taille; i++) {
+        printf("pour %d iterations: ", nb_iterations[i]);
+        gettimeofday(&t_start, NULL); // ------start timer
+        
+        iteration(uni, nb_iterations[i]);
+        
+        gettimeofday(&t_end, NULL);  // ---------stop timer
     
-    printf("%0.5lf\n", time_elapsed);
-}
+        long time_elapsed = (t_end.tv_sec * 1e6 + t_end.tv_usec) - (t_start.tv_sec * 1e6 + t_start.tv_usec);
+        
+        printf("%ld\n", time_elapsed);
+    }
 
-void testPerformance(Universe* uni, void (*iteration)(Universe*)) {
-
-    int nb_iterations[] = {100, 500, 1000, 2000};
-    int taille = 4, i;
-
-    for (i = 0; i < taille; i++)
-        runIterations(uni, nb_iterations[i], iteration);
 
 }
 
