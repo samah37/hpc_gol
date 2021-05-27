@@ -202,7 +202,35 @@ void iterationPthread(Universe *universe, unsigned int nb_iter) {
     free(params);
 }
 
-void testPerformance(Universe* uni, void (*iteration)(Universe*, unsigned int)) {
+FILE* initTestLog(char method[]) {
+    FILE* file = fopen(method, "w+");
+
+    fprintf(file, "La solution %s:\n", method);
+    fprintf(file, "time (s * 10^6)\titerations\n");
+
+    return file;
+}
+
+void writeLog(FILE* log, long time_elapsed, unsigned int nb_iterations) {
+    char time[16];
+    sprintf(time, "%d", time_elapsed);
+
+    int count = strlen(time), i;
+    for (i = count; i < 15; i++) {
+        time[i] = ' ';
+    }
+    time[15] = '\0';
+
+    fprintf(log, "%s\t%d\n", time, nb_iterations);
+
+}
+
+void removeFile(char method[]) {
+    remove(method);
+}
+
+
+void testPerformance(Universe* uni, void (*iteration)(Universe*, unsigned int), FILE* log) {
 
     struct timeval t_start, t_end;
     int i;
@@ -223,6 +251,8 @@ void testPerformance(Universe* uni, void (*iteration)(Universe*, unsigned int)) 
         long time_elapsed = (t_end.tv_sec * 1e6 + t_end.tv_usec) - (t_start.tv_sec * 1e6 + t_start.tv_usec);
         
         printf("%ld\n", time_elapsed);
+
+        writeLog(log, time_elapsed, nb_iterations[i]);
     }
 
 
@@ -245,13 +275,15 @@ int main(int argc, char** argv) {
     int width = atoi(argv[1]);
     int height = atoi(argv[2]);
 
+    FILE* file = initTestLog(method);
+
     Universe* uni = createUniverse(width, height);
     randomizeUniverse(uni);
 
     if (!strcmp(method, "sequentiel"))
-        testPerformance(uni, iterationSequentiel);
+        testPerformance(uni, iterationSequentiel, file);
     else if (!strcmp(method, "pthread"))
-        testPerformance(uni, iterationPthread);
+        testPerformance(uni, iterationPthread, file);
     /*else if (!strcmp(method, "openmp"))
         testPerformance(uni, iterationOpenMP);
     else if (!strcmp(method, "openmpi"))
@@ -260,7 +292,12 @@ int main(int argc, char** argv) {
         testPerformance(uni, iterationHybrid);*/
     else {
         printf("unknown method: %s\n", method);
+        fclose(file);
+        file = NULL;
+        remove(method);
     }
 
+    if (file != NULL)
+        fclose(file);
     freeUniverse(uni);
 }
