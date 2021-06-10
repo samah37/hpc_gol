@@ -212,7 +212,7 @@ void iterationOpenMP(Universe *universe, unsigned int nb_iter){
 		finish = start + (universe->height / nb_threads);
 
 		for(int iter=0 ; iter<nb_iter;iter++){
-			for(int i = start;i<finish:i++){
+			for(int i = start;i<finish;i++){
 				for(int j=0 ;j<universe->width;j++){
 					int index = getIndex(universe,i,j);
 					if(iter%2 == 0)
