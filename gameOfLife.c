@@ -8,7 +8,7 @@
                                         
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
+#include <time.h>   
 /********************* Constants **************************/
 int gridSave[15][15];
 //initial state
