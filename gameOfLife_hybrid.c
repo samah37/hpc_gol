@@ -47,7 +47,6 @@ int main(int argc, char** argv) {
         nb_threads = atoi(argv[3]);
     }
 
-    FILE* file = initTestLog("hybrid");
 
     Universe* uni = createUniverse(width, height);
     randomizeUniverse(uni);
@@ -62,6 +61,11 @@ int main(int argc, char** argv) {
 
     MPI_Comm_size(MPI_COMM_WORLD, &num);
     MPI_Comm_rank(MPI_COMM_WORLD, &id);
+    
+    char method[12];
+    sprintf(method, "%s-%d-%d", "hybrid", num, nb_threads);
+
+    FILE* file = initTestLog(method);
 
     testPerformanceMPI(uni, iterationHybrid, file);
 

@@ -37,7 +37,6 @@ int main(int argc, char** argv) {
     int width = atoi(argv[1]);
     int height = atoi(argv[2]);
 
-    FILE* file = initTestLog("openmpi");
 
     Universe* uni = createUniverse(width, height);
     randomizeUniverse(uni);
@@ -45,6 +44,11 @@ int main(int argc, char** argv) {
     MPI_Init(NULL, NULL);
     MPI_Comm_size(MPI_COMM_WORLD, &num);
     MPI_Comm_rank(MPI_COMM_WORLD, &id);
+
+    char method[12];
+    sprintf(method, "%s-%d", "openmpi", num);
+
+    FILE* file = initTestLog(method);
 
     testPerformanceMPI(uni, iterationOpenMPI, file);
 

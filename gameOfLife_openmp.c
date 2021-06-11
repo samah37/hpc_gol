@@ -42,7 +42,10 @@ int main(int argc, char** argv) {
         nb_threads = atoi(argv[3]);
     }
 
-    FILE* file = initTestLog("openmp");
+	char method[12];
+    sprintf(method, "%s-%d", "openmp", nb_threads);
+
+    FILE* file = initTestLog(method);
 
     Universe* uni = createUniverse(width, height);
     randomizeUniverse(uni);
