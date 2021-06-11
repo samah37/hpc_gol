@@ -90,6 +90,31 @@ void iterationPthread(Universe *universe, unsigned int nb_iter) {
     free(params);
 }
 
+
+void iterationOpenMP(Universe *universe, unsigned int nb_iter){
+	int t_id , start , finish ;
+	#pragma omp parallel private(t_id,start,finish) num_threads(nb_threads)
+	{
+		t_id=omp_get_thread_num();
+		//le début et la fin de chaque thread
+		start = t_id * (universe->height / nb_threads);
+		finish = start + (universe->height / nb_threads);
+
+		for(int iter=0 ; iter<nb_iter;iter++){
+			for(int i = start;i<finish;i++){
+				for(int j=0 ;j<universe->width;j++){
+					int index = getIndex(universe,i,j);
+					if(iter%2 == 0)
+						universe->rightGrid[index] = updateValue(universe,i,j,iter);
+					else
+						universe->leftGrid[index] = updateValue(universe,i,j,iter);
+				}
+			}
+			#pragma omp barrier
+		}
+	}
+}
+
 void iterationOpenMPI(Universe *uni, unsigned int nb_iter) {
     int num, id;
 
@@ -203,8 +228,8 @@ int main(int argc, char** argv) {
         testPerformance(uni, iterationSequentiel, file);
     else if (!strcmp(method, "pthread"))
         testPerformance(uni, iterationPthread, file);
-    /*else if (!strcmp(method, "openmp"))
-        testPerformance(uni, iterationOpenMP);*/
+    else if (!strcmp(method, "openmp"))
+        testPerformance(uni, iterationOpenMP, file);
     else if (!strcmp(method, "openmpi"))
         iterationOpenMPI(uni, 2000);
     else if (!strcmp(method, "hybrid"))
