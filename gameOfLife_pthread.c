@@ -17,9 +17,6 @@ void *subIterationPthread(void* data) {
     int start_height = param->thread_num * param->uni->height / nb_threads;
     int end_height = (param->thread_num + 1) * param->uni->height / nb_threads;
 
-    // verifie start and end heights
-    //printf("thread %d:\n\tstart: %d,\n\tend: %d,\n\n", param->thread_num, start_height, end_height);
-
     int i, j, k;
     for (k = 0; k < param->nb_iter; k++) {
         for (i = start_height; i < end_height; i++) {
@@ -44,7 +41,6 @@ void *subIterationPthread(void* data) {
 }
 
 void iterationPthread(Universe *universe, unsigned int nb_iter) {
-    // TODO: try using the same threads for all iterations
     pthread_t threads[nb_threads];
     pthread_param* params = (pthread_param*) calloc(nb_threads, sizeof(pthread_param));
 
