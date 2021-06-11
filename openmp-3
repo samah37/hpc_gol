@@ -1,0 +1,5 @@
+La solution openmp-3:
+time (s * 10^6)	iterations
+0.243441       	100
+1.197748       	500
+2.353392       	1000

@@ -1,0 +1,5 @@
+La solution pthread-5:
+time (s * 10^6)	iterations
+0.306589       	100
+1.525529       	500
+2.928944       	1000

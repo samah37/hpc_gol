@@ -1,0 +1,5 @@
+La solution openmpi-4:
+time (s * 10^6)	iterations
+0.194648       	100
+1.001998       	500
+2.022789       	1000
