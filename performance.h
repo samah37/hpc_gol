@@ -7,11 +7,11 @@
 
 void testPerformance(Universe* uni, void (*iteration)(Universe*, unsigned int), FILE* log) {
 
+    unsigned int nb_iterations[] = {100, 500, 1000};
+    int taille = sizeof(nb_iterations) / sizeof(unsigned int);
+
     struct timeval t_start, t_end;
     int i;
-
-    unsigned int nb_iterations[] = {2000};
-    int taille = 1;
 
     for (i = 0; i < taille; i++) {
         printf("pour %d iterations: ", nb_iterations[i]);
@@ -22,9 +22,10 @@ void testPerformance(Universe* uni, void (*iteration)(Universe*, unsigned int), 
         gettimeofday(&t_end, NULL);  // ---------stop timer
     
         long time_elapsed = (t_end.tv_sec * 1e6 + t_end.tv_usec) - (t_start.tv_sec * 1e6 + t_start.tv_usec);
+        double elapsed = time_elapsed / 1e6;
         
-        printf("%ld\n", time_elapsed);
+        printf("%.6f\n", elapsed);
 
-        writeLog(log, time_elapsed, nb_iterations[i]);
+        writeLog(log, elapsed, nb_iterations[i]);
     }
 }

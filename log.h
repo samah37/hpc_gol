@@ -12,9 +12,9 @@ FILE* initTestLog(char method[]) {
     return file;
 }
 
-void writeLog(FILE* log, long time_elapsed, unsigned int nb_iterations) {
+void writeLog(FILE* log, double time_elapsed, unsigned int nb_iterations) {
     char time[16];
-    sprintf(time, "%d", time_elapsed);
+    sprintf(time, "%.6f", time_elapsed);
 
     int count = strlen(time), i;
     for (i = count; i < 15; i++) {
