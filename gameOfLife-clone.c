@@ -1,120 +1,8 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <malloc.h>
+#include "performance.h"
+#include "game.h"
 #include <pthread.h>
-#include <sys/time.h>
-
-#define MAX_ALLOC_BYTES 1024*128
-
-typedef struct {
-    unsigned int width;
-    unsigned int height;
-
-    unsigned char *leftGrid;
-    unsigned char *rightGrid;
-} Universe;
-
-// function to get the right index in the table for each element
-int getIndex(Universe* universe, unsigned int row, unsigned int col) {
-    return row * universe->width + col;
-}
-
-Universe* createUniverse(unsigned int width, unsigned int height) {
-
-    // checking for the maximum allocation size
-    size_t taille = sizeof(unsigned char)*width*height + sizeof(Universe);
-    if (taille >= MAX_ALLOC_BYTES) {
-        fprintf(stderr, "trying to allocate %d bytes which is more than the maximum allocation size, the program might crash on some machines.\n", taille);
-    }
-
-
-    Universe* uni = (Universe*) calloc(1, sizeof(Universe));
-
-    uni->width = width;
-    uni->height = height;
-
-    // now we create the list of all elements as a long array
-    uni->leftGrid = calloc(width*height, sizeof(unsigned char));
-    memset(uni->leftGrid, 0, sizeof(unsigned char) * width * height);
-
-    uni->rightGrid = calloc(width*height, sizeof(unsigned char));
-    memset(uni->rightGrid, 0, sizeof(unsigned char) * width * height);
-
-    return uni;
-}
-
-// generate a universe with random values between 0 and 1
-void randomizeUniverse(Universe* uni) {
-    int i, j;
-
-    // and now we fill the grid with data
-    srand(time(NULL));
-    for (i=0; i < uni->height; i++) {
-        for (j = 0; j < uni->width; j++) {
-            uni->leftGrid[getIndex(uni, i, j)] = rand() % 2;
-        }
-    }
-}
-
-void afficherUniverse(Universe* universe) {
-    int i ,j;
-    for (i = 0; i < universe->height; i++){
-        for (j = 0; j < universe->width; j++)
-            printf("%d ", universe->leftGrid[getIndex(universe, i, j)]);
-        printf("\n");
-    }
-}
-
-void freeUniverse(Universe* uni) {
-    free(uni->leftGrid);
-    free(uni->rightGrid);
-
-    free(uni);
-}
-
-unsigned char nbNeighborsAlive(Universe* uni, unsigned int x, unsigned int y, int iteration) {
-
-    unsigned char count = 0;
-    int rows[] = {uni->height - 1, 0, 1};
-    int cols[] = {uni->width - 1, 0, 1};
-    int i, j;
-
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < 3; j++) {
-            if (rows[i] == 0 && cols[j] == 0)
-                continue;
-            
-            char row = (x + rows[i]) % uni->height;
-            char col = (y + cols[j]) % uni->width;
-
-            if (iteration % 2 == 0) {
-                count += uni->leftGrid[getIndex(uni, row, col)];
-            } else {
-                count += uni->rightGrid[getIndex(uni, row, col)];
-            }
-        }
-    }
-
-    return count;
-}
-
-unsigned char updateValue(Universe* universe, unsigned int x, unsigned int y, int iteration) {
-    unsigned char currentVal;
-    if (iteration % 2 == 0) {
-        currentVal = universe->leftGrid[getIndex(universe, x, y)];
-    } else {
-        currentVal = universe->rightGrid[getIndex(universe, x, y)];
-    }
-    unsigned char neighbors = nbNeighborsAlive(universe, x, y, iteration);
-
-    if (currentVal == 1 && (neighbors == 2 || neighbors == 3)) return 1; // survival rule 1
-
-    if (currentVal == 0 && neighbors == 3) return 1;  // survival rule 2
-
-    return 0; // everything else dies
-
-}
+#include <omp.h>
+#include <mpi.h>
 
 int nb_threads = 1;
 void iterationSequentiel(Universe *universe, unsigned int nb_iter) {
@@ -202,60 +90,91 @@ void iterationPthread(Universe *universe, unsigned int nb_iter) {
     free(params);
 }
 
-FILE* initTestLog(char method[]) {
-    FILE* file = fopen(method, "w+");
+void iterationOpenMPI(Universe *uni, unsigned int nb_iter) {
+    int num, id;
 
-    fprintf(file, "La solution %s:\n", method);
-    fprintf(file, "time (s * 10^6)\titerations\n");
+    MPI_Init(NULL, NULL);
+    MPI_Comm_size(MPI_COMM_WORLD, &num);
+    MPI_Comm_rank(MPI_COMM_WORLD, &id);
 
-    return file;
-}
+    int start_height = id * uni->height / num;
+    int end_height = (id + 1) * uni->height / num;
 
-void writeLog(FILE* log, long time_elapsed, unsigned int nb_iterations) {
-    char time[16];
-    sprintf(time, "%d", time_elapsed);
+    // omp_set_num_threads(4);
 
-    int count = strlen(time), i;
-    for (i = count; i < 15; i++) {
-        time[i] = ' ';
+    int i, j, k;
+    double start, end;
+
+    if (id == 0)
+        start = MPI_Wtime();
+    
+    for (k = 0; k < nb_iter; k++) {
+        // #pragma omp parallel for private(i, j)
+        for (i = start_height; i < end_height; i++) {
+            for (j = 0; j < uni->width; j++) {
+                int index = getIndex(uni, i, j);
+
+                if (k % 2 == 0)
+                    uni->rightGrid[index] = updateValue(uni, i, j, k);
+                else
+                    uni->leftGrid[index] = updateValue(uni, i, j, k);
+            }
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
     }
-    time[15] = '\0';
+    if (id == 0) {
+        end = MPI_Wtime();
+        double elapsed = end - start;
 
-    fprintf(log, "%s\t%d\n", time, nb_iterations);
-
+        printf("time passed: %.5f", elapsed);
+    }
+    MPI_Finalize();
 }
 
-void removeFile(char method[]) {
-    remove(method);
-}
+void iterationHybrid(Universe *uni, unsigned int nb_iter) {
+    int num, id, provided;
 
+    MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &provided);
 
-void testPerformance(Universe* uni, void (*iteration)(Universe*, unsigned int), FILE* log) {
-
-    struct timeval t_start, t_end;
-    int i;
-
-    
-
-    unsigned int nb_iterations[] = {100, 500, 1000};
-    int taille = 3;
-
-    for (i = 0; i < taille; i++) {
-        printf("pour %d iterations: ", nb_iterations[i]);
-        gettimeofday(&t_start, NULL); // ------start timer
-        
-        iteration(uni, nb_iterations[i]);
-        
-        gettimeofday(&t_end, NULL);  // ---------stop timer
-    
-        long time_elapsed = (t_end.tv_sec * 1e6 + t_end.tv_usec) - (t_start.tv_sec * 1e6 + t_start.tv_usec);
-        
-        printf("%ld\n", time_elapsed);
-
-        writeLog(log, time_elapsed, nb_iterations[i]);
+    if (provided != MPI_THREAD_MULTIPLE) {
+        printf("provided: %d\n", provided);
     }
 
+    MPI_Comm_size(MPI_COMM_WORLD, &num);
+    MPI_Comm_rank(MPI_COMM_WORLD, &id);
 
+    int start_height = id * uni->height / num;
+    int end_height = (id + 1) * uni->height / num;
+
+    omp_set_num_threads(nb_threads);
+
+    int i, j, k;
+    double start, end;
+
+    if (id == 0)
+        start = MPI_Wtime();
+    
+    for (k = 0; k < nb_iter; k++) {
+        #pragma omp parallel for private(i, j)
+        for (i = start_height; i < end_height; i++) {
+            for (j = 0; j < uni->width; j++) {
+                int index = getIndex(uni, i, j);
+
+                if (k % 2 == 0)
+                    uni->rightGrid[index] = updateValue(uni, i, j, k);
+                else
+                    uni->leftGrid[index] = updateValue(uni, i, j, k);
+            }
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+    }
+    if (id == 0) {
+        end = MPI_Wtime();
+        double elapsed = end - start;
+
+        printf("time passed: %.5f", elapsed);
+    }
+    MPI_Finalize();
 }
 
 int main(int argc, char** argv) {
@@ -285,11 +204,11 @@ int main(int argc, char** argv) {
     else if (!strcmp(method, "pthread"))
         testPerformance(uni, iterationPthread, file);
     /*else if (!strcmp(method, "openmp"))
-        testPerformance(uni, iterationOpenMP);
+        testPerformance(uni, iterationOpenMP);*/
     else if (!strcmp(method, "openmpi"))
-        testPerformance(uni, iterationOpenMPI);
+        iterationOpenMPI(uni, 2000);
     else if (!strcmp(method, "hybrid"))
-        testPerformance(uni, iterationHybrid);*/
+        testPerformance(uni, iterationHybrid, file);
     else {
         printf("unknown method: %s\n", method);
         fclose(file);
