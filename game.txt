@@ -1,2 +1,0 @@
-La solution MPI: 
-Temps prix MPI : 222925983 ms
