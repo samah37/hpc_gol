@@ -12,6 +12,9 @@ void iterationOpenMPI(Universe *uni, unsigned int nb_iter) {
     int i, j, k;
 
     for (k = 0; k < nb_iter; k++) {
+        int count = uni->width * uni->height * 2 + 2 * sizeof(unsigned int), rcount, displs;
+        MPI_Allgatherv(uni, count, MPI_CHAR, uni, &rcount, &displs, MPI_CHAR, MPI_COMM_WORLD);
+        printf("%d, %d\n", rcount, displs);
         for (i = start_height; i < end_height; i++) {
             for (j = 0; j < uni->width; j++) {
                 int index = getIndex(uni, i, j);
@@ -22,7 +25,7 @@ void iterationOpenMPI(Universe *uni, unsigned int nb_iter) {
                     uni->leftGrid[index] = updateValue(uni, i, j, k);
             }
         }
-        MPI_Barrier(MPI_COMM_WORLD);
+        
     }
     
 }
@@ -49,6 +52,8 @@ int main(int argc, char** argv) {
     sprintf(method, "%s-%d", "openmpi", num);
 
     FILE* file = initTestLog(method);
+
+    MPI_Bcast(uni, 2 * width * height + 2 * sizeof(unsigned int), MPI_CHAR, 0, MPI_COMM_WORLD);
 
     testPerformanceMPI(uni, iterationOpenMPI, file);
 

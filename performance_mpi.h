@@ -8,7 +8,7 @@
 
 void testPerformanceMPI(Universe* uni, void (*iteration)(Universe*, unsigned int), FILE* log) {
 
-    unsigned int nb_iterations[] = {100, 500, 1000};
+    unsigned int nb_iterations[] = {1000};
     int taille = sizeof(nb_iterations) / sizeof(unsigned int);
 
     double start, end;

@@ -1,5 +1,0 @@
-La solution pthread-3:
-time (s * 10^6)	iterations
-0.253245       	100
-1.253684       	500
-2.461748       	1000
