@@ -78,8 +78,15 @@ unsigned char nbNeighborsAlive(Universe* uni, unsigned int x, unsigned int y, in
             if (rows[i] == 0 && cols[j] == 0)
                 continue;
             
-            char row = (x + rows[i]) % uni->height;
-            char col = (y + cols[j]) % uni->width;
+            unsigned int row = (x + rows[i]) % uni->height;
+            unsigned int col = (y + cols[j]) % uni->width;
+
+            if (row < 0)
+                row += uni->height;
+            if (col < 0) {
+                col += uni->width;
+                printf("%d, %d\n", row, col);
+            }
 
             if (iteration % 2 == 0) {
                 count += uni->leftGrid[getIndex(uni, row, col)];
