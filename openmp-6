@@ -1,5 +1,0 @@
-La solution openmp-6:
-time (s * 10^6)	iterations
-0.268761       	100
-1.342338       	500
-2.688268       	1000
